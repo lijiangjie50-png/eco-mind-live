@@ -180,32 +180,122 @@ with col2:
 
 st.markdown("---")
 
-# Section 3: DiCE (这里修改了下拉菜单)
-st.markdown("### 3. Actionable Insights (DiCE)")
-st.write(f"Scenario: How to change from **{pred_name}** to another type?")
+# ==========================================
+# 3. Actionable Insights (Planner View) - REPLACEMENT BLOCK
+# ==========================================
+st.markdown("### 3. Tactical Planning & Restoration Scenarios(DiCE)")
 
-# --- 关键修改：格式化显示函数 ---
-def format_func(option):
-    return f"{class_names[option]} (Type {option})"
+# 创建两个选项卡：一个给 DiCE（逆向优化），一个给手动模拟（正向推演）
+tab1, tab2 = st.tabs(["🎯 Goal-Driven Optimization (DiCE)", "🧪 What-If Simulation (Forward)"])
 
-target_class = st.selectbox(
-    "Select Target Class:",
-    options=list(class_names.keys()),
-    index=2, # 默认为 Type 3
-    format_func=format_func # 让菜单显示名字而不是数字
-)
+# ------------------------------------------
+# Tab 1: 逆向优化 (Smart DiCE - 限制只能改能改的)
+# ------------------------------------------
+with tab1:
+    st.markdown("**Goal:** Find the minimal *feasible* intervention to restore a specific species.")
+    
+    # 1. 定义人类可以改变的特征 (Actionable Features)
+    # 关键点：我们锁定了海拔、坡度等自然属性，只允许 AI 修改基建属性
+    actionable_features = [
+        "Horizontal_Distance_To_Hydrology",
+        "Horizontal_Distance_To_Roadways", 
+        "Horizontal_Distance_To_Fire_Points"
+    ]
+    
+    st.info(f"🔒 **Constraints:** Elevation, Slope, Soil Type are locked (Immutable). \n\n 🛠️ **Allowed Interventions:** Distance to Water, Road, Fire Points.")
 
-if st.button("Generate Counterfactuals"):
-    with st.spinner("Calculating..."):
-        try:
-            cf = dice_exp.generate_counterfactuals(
-                query_df,
-                total_CFs=3,
-                desired_class=int(target_class),
-                features_to_vary=continuous_cols 
-            )
-            cf_df = cf.visualize_as_dataframe(show_only_changes=False)
-            st.dataframe(cf_df)
-        except Exception as e:
-            # 优化了报错提示，更友好
-            st.warning(f"⚠️ Unable to find a feasible path. This usually means the target species ({class_names[target_class]}) requires ecologically impossible changes (e.g., changing elevation by 1000m). Try selecting a closer species.")
+    # 2. 目标选择 (带格式化显示)
+    def format_func_dice(option):
+        return f"{class_names[option]} (Type {option})"
+
+    target_class_dice = st.selectbox(
+        "Select Restoration Target:",
+        options=list(class_names.keys()),
+        index=2, # 默认 Type 3
+        format_func=format_func_dice,
+        key="dice_target_select" # 加上 key 防止冲突
+    )
+
+    if st.button("Generate Intervention Plan", key="btn_dice"):
+        with st.spinner("Analyzing feasibility under constraints..."):
+            try:
+                # 3. DiCE 生成 (限制 features_to_vary)
+                cf = dice_exp.generate_counterfactuals(
+                    query_df,
+                    total_CFs=3,
+                    desired_class=int(target_class_dice),
+                    features_to_vary=actionable_features # <--- 核心修改：只改能改的
+                )
+                
+                # 可视化结果
+                cf_df = cf.visualize_as_dataframe(show_only_changes=False)
+                
+                # 高亮显示
+                st.success(f"✅ Feasible Plan Found! To support {class_names[target_class_dice]}, implement these changes:")
+                # 把 actionable features 标绿
+                st.dataframe(cf_df.style.apply(lambda x: ['background-color: #d1e7dd' if col in actionable_features else '' for col in x.index], axis=1))
+                
+            except Exception as e:
+                # 4. 失败处理：非常有价值的“不可行”结论
+                st.error(f"⛔ **Ecologically Infeasible.**")
+                st.warning(f"""
+                The system determined that it is **impossible** to transform this area into **{class_names[target_class_dice]}** just by modifying Hydrology, Roads, or Fire Points. 
+                
+                **Reason:** The limiting factors (likely Elevation or Soil) are immutable natural attributes.
+                **Advice:** Select a target species that matches the current elevation profile.
+                """)
+
+# ------------------------------------------
+# Tab 2: 正向模拟 (What-If 模拟器 - 你的核心需求)
+# ------------------------------------------
+with tab2:
+    st.markdown("**Scenario:** Planner manually adjusts infrastructure to forecast ecological impact.")
+    st.caption("Example: *'If I build a canal here (Distance to Hydro = 0), will the forest type change?'*")
+    
+    col_sim1, col_sim2 = st.columns([1, 1], gap="medium")
+    
+    with col_sim1:
+        st.write("#### 🛠️ Intervention Settings")
+        # 这里的滑块独立于左侧 Sidebar，只用于临时模拟
+        # 默认值取当前 query_df 的值
+        current_hydro = query_df['Horizontal_Distance_To_Hydrology'].values[0]
+        current_road = query_df['Horizontal_Distance_To_Roadways'].values[0]
+        current_fire = query_df['Horizontal_Distance_To_Fire_Points'].values[0]
+
+        new_hydro = st.slider("New Dist. to Hydro (m)", 0, 1500, int(current_hydro), key="sim_hydro", help="Simulate building water sources")
+        new_road = st.slider("New Dist. to Road (m)", 0, 7000, int(current_road), key="sim_road", help="Simulate building/removing roads")
+        new_fire = st.slider("New Dist. to Fire (m)", 0, 7000, int(current_fire), key="sim_fire", help="Simulate fire breaks")
+        
+    with col_sim2:
+        st.write("#### 🔮 Forecasted Outcome")
+        
+        # 1. 构造模拟数据
+        sim_data = query_df.copy()
+        sim_data['Horizontal_Distance_To_Hydrology'] = new_hydro
+        sim_data['Horizontal_Distance_To_Roadways'] = new_road
+        sim_data['Horizontal_Distance_To_Fire_Points'] = new_fire
+        
+        # 2. 重新预测
+        new_pred = model.predict(sim_data)[0]
+        new_probs = model.predict_proba(sim_data)[0]
+        new_pred_name = class_names[new_pred]
+        
+        # 3. 显示对比结果 (Metirc)
+        # 如果预测变了，显示绿色；没变显示灰色
+        delta_color = "normal" if new_pred == prediction else "inverse"
+        st.metric(
+            label="Projected Vegetation Type",
+            value=f"{new_pred_name}",
+            delta=f"From: {pred_name}",
+            delta_color=delta_color
+        )
+        
+        # 4. 显示概率分布变化 (Bar Chart)
+        # 用数据框展示概率，让规划师看到微小的概率波动
+        prob_df = pd.DataFrame({
+            "Species": list(class_names.values()),
+            "Probability": new_probs
+        })
+        st.bar_chart(prob_df.set_index("Species"), color="#2E7D32")
+
+st.markdown("---")
