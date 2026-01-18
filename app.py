@@ -189,7 +189,7 @@ st.markdown("### 3. Tactical Planning & Restoration Scenarios(DiCE)")
 tab1, tab2 = st.tabs(["🎯 Goal-Driven Optimization (DiCE)", "🧪 What-If Simulation (Forward)"])
 
 # ------------------------------------------
-# Tab 1: 智能火险管理 (Fire Risk Management - 替换了原来的 DiCE)
+# Tab 1: 智能火险管理 (Fire Risk Management - 加固版)
 # ------------------------------------------
 with tab1:
     st.markdown("**Module:** 🔥 Intelligent Fire Risk Assessment & Mitigation")
@@ -197,20 +197,20 @@ with tab1:
 
     col_risk1, col_risk2 = st.columns([1, 1], gap="large")
 
-    # 1. 定义树种的易燃等级 (基于生态常识)
-    # Type 2 (Lodgepole) 和 Type 1 (Spruce) 通常油脂高，易燃
-    # Type 5 (Aspen) 含水量高，不易燃
+    # 1. 定义树种的易燃等级
     fire_risk_map = {
         1: {"level": "High", "color": "inverse"},       # Spruce/Fir
         2: {"level": "Critical", "color": "inverse"},   # Lodgepole Pine
-        3: {"level": "Medium", "color": "off"},         # Ponderosa
-        4: {"level": "Low", "color": "normal"},         # Cottonwood
+        3: {"level": "Medium", "color": "off"},         # Ponderosa Pine (你现在的预测结果)
+        4: {"level": "Low", "color": "normal"},         # Cottonwood/Willow
         5: {"level": "Low", "color": "normal"},         # Aspen
         6: {"level": "Medium", "color": "off"},         # Douglas-fir
         7: {"level": "High", "color": "inverse"}        # Krummholz
     }
 
-    current_risk_info = fire_risk_map.get(prediction, {"level": "Unknown", "color": "off"})
+    # 获取当前预测的风险信息
+    # 注意：Prediction 必须是整数，如果报错 key error，可能是因为 prediction 还没计算出来
+    current_risk_info = fire_risk_map.get(int(prediction), {"level": "Unknown", "color": "off"})
     risk_level = current_risk_info["level"]
 
     with col_risk1:
@@ -221,20 +221,21 @@ with tab1:
             label="Species Fire Susceptibility",
             value=f"{risk_level} Risk",
             delta=f"Species: {pred_name}",
-            delta_color=current_risk_info["color"]
+            delta_color=current_risk_info["color"],
+            key="metric_fire_risk"  # <--- 关键修复：添加唯一 Key
         )
         
         # 基础设施诊断
         infra_status = []
         
-        # 检查水源距离 (假设 > 500m 为救援困难)
+        # 检查水源
         if h_hydro > 500:
             st.error(f"❌ **Water Access:** Poor ({h_hydro}m away)")
             infra_status.append("Water")
         else:
             st.success(f"✅ **Water Access:** Good ({h_hydro}m away)")
             
-        # 检查道路距离 (假设 > 1000m 为救援困难)
+        # 检查道路
         if road > 1000:
             st.error(f"❌ **Emergency Road:** Poor ({road}m away)")
             infra_status.append("Road")
@@ -244,28 +245,30 @@ with tab1:
     with col_risk2:
         st.write("#### 🛡️ AI Recommendations")
         
+        # 只有高风险才建议修路
         if risk_level in ["High", "Critical"]:
             st.warning(f"Detected **{pred_name}** (High Fuel Load). Immediate mitigation recommended.")
             
             suggestions = []
             
-            # 规则引擎：根据诊断生成建议
             if "Water" in infra_status:
                 suggestions.append(f"💧 **Construct Fire Canal:** Reduce distance to hydrology to < 300m.")
-                suggestions.append(f"   *Impact:* Provides immediate water source for suppression.")
             
             if "Road" in infra_status:
                 suggestions.append(f"🛣️ **Extend Access Road:** Reduce distance to roadways to < 500m.")
-                suggestions.append(f"   *Impact:* Allows fire trucks to reach the zone quickly.")
             
             if not suggestions:
-                st.info("✅ Current infrastructure is adequate for this risk level. Maintain regular monitoring.")
+                st.info("✅ Infrastructure is adequate. Maintain regular monitoring.")
             else:
-                for s in suggestions:
+                for i, s in enumerate(suggestions):
                     st.markdown(s)
+        
+        # Ponderosa Pine (Type 3) 属于 Medium，会走这里
         else:
-            st.success(f"**{pred_name}** is a low-flammability species. Standard monitoring is sufficient.")
+            st.success(f"**{pred_name}** has manageable fire resistance. Standard monitoring is sufficient.")
             st.markdown("*No major infrastructure changes required.*")
+            # 添加一个占位符，防止布局塌陷
+            st.caption(f"Risk Level: {risk_level}")
 # ------------------------------------------
 # Tab 2: 正向模拟 (What-If 模拟器 - 你的核心需求)
 # ------------------------------------------
@@ -320,4 +323,5 @@ with tab2:
         st.bar_chart(prob_df.set_index("Species"), color="#2E7D32")
 
 st.markdown("---")
+
 
