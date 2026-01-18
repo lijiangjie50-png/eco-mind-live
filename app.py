@@ -19,61 +19,76 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 缓存函数：防止每次刷新网页都重新训练模型
+# 缓存函数
 @st.cache_resource
 def load_and_train_model():
     # ---------------------------------------------------------
-    # PART A: Load Data (Matching your original code)
+    # PART A: Load Data
     # ---------------------------------------------------------
-    try:
-        # 为了演示速度，这里默认只读取前 15000 行。
-        # 如果你想用全量数据 (58万行)，请把 nrows=15000 删掉
-        # 注意：Streamlit Cloud 免费版内存可能跑不动 58万行
-        df = pd.read_csv("covtype.csv", nrows=15000)
-    except FileNotFoundError:
-        # 如果没有csv，生成模拟数据防止报错 (备用方案)
-        st.error("未找到 covtype.csv，正在使用模拟数据演示...")
-        from sklearn.datasets import make_classification
-        X_dummy, y_dummy = make_classification(n_samples=2000, n_features=54, n_classes=7, n_informative=10)
-        df = pd.DataFrame(X_dummy, columns=[f"Feature_{i}" for i in range(54)])
-        df['Cover_Type'] = y_dummy + 1
-        
-    X = df.drop(columns=["Cover_Type"])
-    y = df["Cover_Type"]
+    # 1. 定义真实的列名结构 (防止模拟数据列名对不上)
+    cols_continuous = [
+        "Elevation", "Aspect", "Slope",
+        "Horizontal_Distance_To_Hydrology", "Vertical_Distance_To_Hydrology",
+        "Horizontal_Distance_To_Roadways", "Horizontal_Distance_To_Fire_Points",
+        "Hillshade_9am", "Hillshade_Noon", "Hillshade_3pm"
+    ]
+    cols_wilderness = [f"Wilderness_Area{i}" for i in range(1, 5)]
+    cols_soil = [f"Soil_Type{i}" for i in range(1, 41)]
+    all_feature_names = cols_continuous + cols_wilderness + cols_soil
 
-    # Stratify split (Exactly as in your code)
+    try:
+        # 尝试读取 CSV (只读前 10000 行以节省内存)
+        df = pd.read_csv("covtype.csv", nrows=10000)
+    except FileNotFoundError:
+        # -----------------------------------------------------
+        # 关键修复：模拟数据必须使用和真实数据一样的列名！
+        # -----------------------------------------------------
+        st.warning("⚠️ 未找到 covtype.csv，正在使用【模拟数据】模式运行。")
+        np.random.seed(42)
+        n_samples = 2000
+        
+        # 生成模拟数据字典
+        data_sim = {}
+        for col in cols_continuous:
+            data_sim[col] = np.random.rand(n_samples) * 100 # 随机值
+        for col in cols_wilderness + cols_soil:
+            data_sim[col] = np.random.randint(0, 2, n_samples) # 0或1
+            
+        df = pd.DataFrame(data_sim)
+        # 确保列顺序一致
+        df = df[all_feature_names]
+        # 生成目标变量
+        df['Cover_Type'] = np.random.randint(1, 8, n_samples)
+        
+    X = df.drop(columns=["Cover_Type"], errors='ignore')
+    y = df["Cover_Type"]
+    
+    # 确保 X 只包含我们定义的特征列
+    X = X[all_feature_names]
+
+    # Stratify split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
     # ---------------------------------------------------------
-    # PART B: Train Model (Your exact hyperparameters)
+    # PART B: Train Model
     # ---------------------------------------------------------
     model = RandomForestClassifier(
-        n_estimators=300,          # Your original param
-        random_state=42,           # Your original param
-        n_jobs=-1,                 # Your original param
-        class_weight="balanced"    # Your original param
+        n_estimators=100, # 稍微减小一点以防超时
+        random_state=42,
+        n_jobs=-1,
+        class_weight="balanced"
     )
     model.fit(X_train, y_train)
 
     # ---------------------------------------------------------
     # PART C: Setup Explainer & DiCE
     # ---------------------------------------------------------
-    # SHAP Explainer
     explainer = shap.TreeExplainer(model)
 
     # DiCE Setup
-    # Extract continuous features (matching your list)
-    continuous_features = [
-        "Elevation", "Aspect", "Slope",
-        "Horizontal_Distance_To_Hydrology", "Vertical_Distance_To_Hydrology",
-        "Horizontal_Distance_To_Roadways", "Horizontal_Distance_To_Fire_Points",
-        "Hillshade_9am", "Hillshade_Noon", "Hillshade_3pm",
-    ]
-    
-    # Check if these columns actually exist (in case of dummy data)
-    valid_continuous = [c for c in continuous_features if c in X_train.columns]
+    valid_continuous = [c for c in cols_continuous if c in X_train.columns]
 
     d = dice_ml.Data(
         dataframe=pd.concat([X_train, y_train], axis=1),
@@ -86,19 +101,18 @@ def load_and_train_model():
 
     return model, explainer, dice_exp, X_train, valid_continuous
 
-# 加载模型 (显示加载条)
-with st.spinner('Training Random Forest (n=300) & Initializing XAI engines...'):
+# 加载模型
+with st.spinner('System Initializing... (Training Model & Loading XAI Engine)'):
     model, explainer, dice_exp, X_train, continuous_cols = load_and_train_model()
 
 # ==========================================
-# 2. Sidebar: Inputs (Smart Handling)
+# 2. Sidebar: Inputs
 # ==========================================
 st.sidebar.header("📍 Feature Input")
 
-# 获取训练数据的列名结构
-feature_names = X_train.columns.tolist()
+# 获取训练数据的列名结构 (这是标准答案)
+feature_names_ref = X_train.columns.tolist()
 
-# 1. 连续变量输入 (使用你提供的 "Query Instance" 值作为默认值)
 def input_feature(label, default, min_v, max_v):
     return st.sidebar.slider(label, min_v, max_v, default)
 
@@ -115,21 +129,19 @@ shade3 = input_feature("Hillshade 3pm", 162, 0, 255)
 
 st.sidebar.markdown("---")
 
-# 2. 离散变量智能处理 (One-Hot Decoding)
-# 将 40 个 Soil_Type 压缩为一个下拉菜单
 soil_options = [f"Soil_Type{i}" for i in range(1, 41)]
-selected_soil = st.sidebar.selectbox("Soil Type", soil_options, index=28) # Default Type 29 (index 28)
+selected_soil = st.sidebar.selectbox("Soil Type", soil_options, index=28)
 
 wilderness_options = [f"Wilderness_Area{i}" for i in range(1, 5)]
-selected_wild = st.sidebar.selectbox("Wilderness Area", wilderness_options, index=0) # Default Area 1
+selected_wild = st.sidebar.selectbox("Wilderness Area", wilderness_options, index=0)
 
-# 3. 构建输入向量 (Reconstruct One-Hot Vector)
+# 构建输入向量
 input_data = {}
-# 先填满 0
-for col in feature_names:
+# 先全部填 0
+for col in feature_names_ref:
     input_data[col] = 0
 
-# 填入连续值
+# 填入滑块的值
 input_data['Elevation'] = elevation
 input_data['Aspect'] = aspect
 input_data['Slope'] = slope
@@ -141,7 +153,7 @@ input_data['Hillshade_9am'] = shade9
 input_data['Hillshade_Noon'] = shade12
 input_data['Hillshade_3pm'] = shade3
 
-# 填入离散值 (One-Hot)
+# 填入下拉菜单的值 (One-Hot)
 if selected_soil in input_data: input_data[selected_soil] = 1
 if selected_wild in input_data: input_data[selected_wild] = 1
 
@@ -149,14 +161,18 @@ if selected_wild in input_data: input_data[selected_wild] = 1
 query_df = pd.DataFrame([input_data])
 
 # ==========================================
+# 关键修复 (CRITICAL FIX)
+# ==========================================
+# 强制让 query_df 的列顺序和名字完全匹配训练时的 X_train
+# 这一步会丢弃掉任何多余的列，并自动按照正确顺序排列
+query_df = query_df[feature_names_ref] 
+
+# ==========================================
 # 3. Main Dashboard
 # ==========================================
 st.markdown('<div class="main-header">🌲 Forest Cover Type XAI Dashboard</div>', unsafe_allow_html=True)
-st.markdown("Interactive analysis based on Random Forest & SHAP/DiCE")
 
-# ----------------------------------
 # Section 1: Prediction
-# ----------------------------------
 col1, col2 = st.columns([1, 2])
 
 with col1:
@@ -165,75 +181,48 @@ with col1:
     probs = model.predict_proba(query_df)[0]
     confidence = np.max(probs)
     
-    # 类别名称映射
     class_names = {1: "Spruce/Fir", 2: "Lodgepole Pine", 3: "Ponderosa Pine", 
                    4: "Cottonwood/Willow", 5: "Aspen", 6: "Douglas-fir", 7: "Krummholz"}
     pred_name = class_names.get(prediction, f"Type {prediction}")
 
-    st.metric("Predicted Class", f"{pred_name} (Type {prediction})")
+    st.metric("Predicted Class", f"{pred_name}")
     st.metric("Confidence", f"{confidence*100:.1f}%")
     
     if prediction == 1:
-        st.info("ℹ️ Note: High Elevation species.")
+        st.info("ℹ️ High Elevation Zone")
     elif prediction == 2:
-        st.warning("ℹ️ Note: Fire-prone species.")
+        st.warning("ℹ️ Fire Risk: High")
 
-# ----------------------------------
-# Section 2: SHAP Waterfall
-# ----------------------------------
+# Section 2: SHAP
 with col2:
-    st.markdown("### 2. Explanation (SHAP Waterfall)")
-    # 计算 SHAP
+    st.markdown("### 2. Explanation (SHAP)")
     shap_values = explainer(query_df)
-    
-    # 获取对应预测类别的 SHAP (和你的代码逻辑一致)
-    # TreeExplainer 对多分类返回 list，需要取对应的 class index
     class_idx = int(prediction) - 1
     
-    # 构造 Explanation 对象 (为了画图)
-    shap_val_single = shap_values[0, :, class_idx]
-    
+    # 画图
     fig, ax = plt.subplots(figsize=(8, 4))
-    shap.plots.waterfall(shap_val_single, show=False, max_display=7)
+    # 注意：使用当前预测类的 SHAP 值
+    shap.plots.waterfall(shap_values[0, :, class_idx], show=False, max_display=7)
     st.pyplot(fig)
 
 st.markdown("---")
 
-# ----------------------------------
-# Section 3: DiCE Counterfactuals
-# ----------------------------------
-st.markdown("### 3. Actionable Insights (DiCE Counterfactuals)")
-st.write(f"Generating scenarios to flip prediction from **{pred_name}** to another class...")
+# Section 3: DiCE
+st.markdown("### 3. Actionable Insights (DiCE)")
+st.write(f"Scenario: How to change from **{pred_name}** to another type?")
 
-# 让用户选择目标类别 (或者自动选择概率第二高的，如你的代码所示)
-sorted_indices = np.argsort(probs)[::-1]
-# 默认选概率第二高的作为目标
-default_target = int(sorted_indices[1]) + 1
-target_class = st.selectbox("Select Target Class for Restoration:", list(class_names.keys()), index=list(class_names.keys()).index(default_target))
+target_class = st.selectbox("Select Target Class:", list(class_names.keys()), index=2) # Default Type 3
 
 if st.button("Generate Counterfactuals"):
-    with st.spinner("DiCE is calculating minimal changes..."):
+    with st.spinner("Calculating..."):
         try:
-            # DiCE Generation (Matching your code params)
             cf = dice_exp.generate_counterfactuals(
                 query_df,
                 total_CFs=3,
                 desired_class=int(target_class),
                 features_to_vary=continuous_cols 
-                # 注意：这里只允许改变你代码里定义的 continuous features，SoilType 不会变
             )
-            
-            # 显示结果
             cf_df = cf.visualize_as_dataframe(show_only_changes=False)
-            
-            # 高亮变化
-            st.dataframe(cf_df.style.apply(lambda x: ['background-color: #d4edda' if x.name != 0 else '' for i in x], axis=1))
-            
-            st.success("✅ Changes generated! Compare the 'Original' row with the suggestions.")
-            
+            st.dataframe(cf_df)
         except Exception as e:
-            st.error(f"DiCE calculation failed (possibly due to constraints): {e}")
-
-st.markdown("---")
-st.caption("Dashboard Logic mirrors original Jupyter Notebook: RF (n=300, balanced) | Stratified Split | DiCE Random Method")
-
+            st.error(f"Could not generate counterfactuals: {e}")
