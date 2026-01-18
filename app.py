@@ -189,62 +189,83 @@ st.markdown("### 3. Tactical Planning & Restoration Scenarios(DiCE)")
 tab1, tab2 = st.tabs(["🎯 Goal-Driven Optimization (DiCE)", "🧪 What-If Simulation (Forward)"])
 
 # ------------------------------------------
-# Tab 1: 逆向优化 (Smart DiCE - 限制只能改能改的)
+# Tab 1: 智能火险管理 (Fire Risk Management - 替换了原来的 DiCE)
 # ------------------------------------------
 with tab1:
-    st.markdown("**Goal:** Find the minimal *feasible* intervention to restore a specific species.")
-    
-    # 1. 定义人类可以改变的特征 (Actionable Features)
-    # 关键点：我们锁定了海拔、坡度等自然属性，只允许 AI 修改基建属性
-    actionable_features = [
-        "Horizontal_Distance_To_Hydrology",
-        "Horizontal_Distance_To_Roadways", 
-        "Horizontal_Distance_To_Fire_Points"
-    ]
-    
-    st.info(f"🔒 **Constraints:** Elevation, Slope, Soil Type are locked (Immutable). \n\n 🛠️ **Allowed Interventions:** Distance to Water, Road, Fire Points.")
+    st.markdown("**Module:** 🔥 Intelligent Fire Risk Assessment & Mitigation")
+    st.caption("Based on the predicted species and current infrastructure, suggest safety interventions.")
 
-    # 2. 目标选择 (带格式化显示)
-    def format_func_dice(option):
-        return f"{class_names[option]} (Type {option})"
+    col_risk1, col_risk2 = st.columns([1, 1], gap="large")
 
-    target_class_dice = st.selectbox(
-        "Select Restoration Target:",
-        options=list(class_names.keys()),
-        index=2, # 默认 Type 3
-        format_func=format_func_dice,
-        key="dice_target_select" # 加上 key 防止冲突
-    )
+    # 1. 定义树种的易燃等级 (基于生态常识)
+    # Type 2 (Lodgepole) 和 Type 1 (Spruce) 通常油脂高，易燃
+    # Type 5 (Aspen) 含水量高，不易燃
+    fire_risk_map = {
+        1: {"level": "High", "color": "inverse"},       # Spruce/Fir
+        2: {"level": "Critical", "color": "inverse"},   # Lodgepole Pine
+        3: {"level": "Medium", "color": "off"},         # Ponderosa
+        4: {"level": "Low", "color": "normal"},         # Cottonwood
+        5: {"level": "Low", "color": "normal"},         # Aspen
+        6: {"level": "Medium", "color": "off"},         # Douglas-fir
+        7: {"level": "High", "color": "inverse"}        # Krummholz
+    }
 
-    if st.button("Generate Intervention Plan", key="btn_dice"):
-        with st.spinner("Analyzing feasibility under constraints..."):
-            try:
-                # 3. DiCE 生成 (限制 features_to_vary)
-                cf = dice_exp.generate_counterfactuals(
-                    query_df,
-                    total_CFs=3,
-                    desired_class=int(target_class_dice),
-                    features_to_vary=actionable_features # <--- 核心修改：只改能改的
-                )
-                
-                # 可视化结果
-                cf_df = cf.visualize_as_dataframe(show_only_changes=False)
-                
-                # 高亮显示
-                st.success(f"✅ Feasible Plan Found! To support {class_names[target_class_dice]}, implement these changes:")
-                # 把 actionable features 标绿
-                st.dataframe(cf_df.style.apply(lambda x: ['background-color: #d1e7dd' if col in actionable_features else '' for col in x.index], axis=1))
-                
-            except Exception as e:
-                # 4. 失败处理：非常有价值的“不可行”结论
-                st.error(f"⛔ **Ecologically Infeasible.**")
-                st.warning(f"""
-                The system determined that it is **impossible** to transform this area into **{class_names[target_class_dice]}** just by modifying Hydrology, Roads, or Fire Points. 
-                
-                **Reason:** The limiting factors (likely Elevation or Soil) are immutable natural attributes.
-                **Advice:** Select a target species that matches the current elevation profile.
-                """)
+    current_risk_info = fire_risk_map.get(prediction, {"level": "Unknown", "color": "off"})
+    risk_level = current_risk_info["level"]
 
+    with col_risk1:
+        st.write("#### ⚠️ Risk Diagnosis")
+        
+        # 显示当前树种的风险等级
+        st.metric(
+            label="Species Fire Susceptibility",
+            value=f"{risk_level} Risk",
+            delta=f"Species: {pred_name}",
+            delta_color=current_risk_info["color"]
+        )
+        
+        # 基础设施诊断
+        infra_status = []
+        
+        # 检查水源距离 (假设 > 500m 为救援困难)
+        if h_hydro > 500:
+            st.error(f"❌ **Water Access:** Poor ({h_hydro}m away)")
+            infra_status.append("Water")
+        else:
+            st.success(f"✅ **Water Access:** Good ({h_hydro}m away)")
+            
+        # 检查道路距离 (假设 > 1000m 为救援困难)
+        if road > 1000:
+            st.error(f"❌ **Emergency Road:** Poor ({road}m away)")
+            infra_status.append("Road")
+        else:
+            st.success(f"✅ **Emergency Road:** Good ({road}m away)")
+
+    with col_risk2:
+        st.write("#### 🛡️ AI Recommendations")
+        
+        if risk_level in ["High", "Critical"]:
+            st.warning(f"Detected **{pred_name}** (High Fuel Load). Immediate mitigation recommended.")
+            
+            suggestions = []
+            
+            # 规则引擎：根据诊断生成建议
+            if "Water" in infra_status:
+                suggestions.append(f"💧 **Construct Fire Canal:** Reduce distance to hydrology to < 300m.")
+                suggestions.append(f"   *Impact:* Provides immediate water source for suppression.")
+            
+            if "Road" in infra_status:
+                suggestions.append(f"🛣️ **Extend Access Road:** Reduce distance to roadways to < 500m.")
+                suggestions.append(f"   *Impact:* Allows fire trucks to reach the zone quickly.")
+            
+            if not suggestions:
+                st.info("✅ Current infrastructure is adequate for this risk level. Maintain regular monitoring.")
+            else:
+                for s in suggestions:
+                    st.markdown(s)
+        else:
+            st.success(f"**{pred_name}** is a low-flammability species. Standard monitoring is sufficient.")
+            st.markdown("*No major infrastructure changes required.*")
 # ------------------------------------------
 # Tab 2: 正向模拟 (What-If 模拟器 - 你的核心需求)
 # ------------------------------------------
@@ -299,3 +320,4 @@ with tab2:
         st.bar_chart(prob_df.set_index("Species"), color="#2E7D32")
 
 st.markdown("---")
+
