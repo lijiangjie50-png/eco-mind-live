@@ -138,7 +138,7 @@ query_df = query_df[feature_names_ref]
 # ==========================================
 st.markdown('<div class="main-header">🌲 Forest Cover Type XAI Dashboard</div>', unsafe_allow_html=True)
 
-# 定义所有类别名称 (供全局使用)
+# 定义所有类别名称
 class_names = {
     1: "Spruce/Fir", 
     2: "Lodgepole Pine", 
@@ -181,61 +181,58 @@ with col2:
 st.markdown("---")
 
 # ==========================================
-# 3. Actionable Insights (Planner View) - REPLACEMENT BLOCK
+# 3. Tactical Planning (REPLACEMENT BLOCK)
 # ==========================================
-st.markdown("### 3. Tactical Planning & Restoration Scenarios(DiCE)")
+st.markdown("### 3. Tactical Planning & Restoration Scenarios")
 
-# 创建两个选项卡：一个给 DiCE（逆向优化），一个给手动模拟（正向推演）
-tab1, tab2 = st.tabs(["🎯 Goal-Driven Optimization (DiCE)", "🧪 What-If Simulation (Forward)"])
+# 创建选项卡
+tab1, tab2 = st.tabs(["🎯 Intelligent Fire Risk Assessment", "🧪 What-If Simulation"])
 
 # ------------------------------------------
-# Tab 1: 智能火险管理 (Fire Risk Management - 加固版)
+# Tab 1: 智能火险管理 (Tab 1)
 # ------------------------------------------
 with tab1:
-    st.markdown("**Module:** 🔥 Intelligent Fire Risk Assessment & Mitigation")
-    st.caption("Based on the predicted species and current infrastructure, suggest safety interventions.")
+    st.markdown("**Module:** 🔥 Risk Assessment & Mitigation")
+    st.caption("Based on predicted species and infrastructure.")
 
     col_risk1, col_risk2 = st.columns([1, 1], gap="large")
 
-    # 1. 定义树种的易燃等级
+    # 定义火险等级
     fire_risk_map = {
         1: {"level": "High", "color": "inverse"},       # Spruce/Fir
         2: {"level": "Critical", "color": "inverse"},   # Lodgepole Pine
-        3: {"level": "Medium", "color": "off"},         # Ponderosa Pine (你现在的预测结果)
+        3: {"level": "Medium", "color": "off"},         # Ponderosa Pine
         4: {"level": "Low", "color": "normal"},         # Cottonwood/Willow
         5: {"level": "Low", "color": "normal"},         # Aspen
         6: {"level": "Medium", "color": "off"},         # Douglas-fir
         7: {"level": "High", "color": "inverse"}        # Krummholz
     }
 
-    # 获取当前预测的风险信息
-    # 注意：Prediction 必须是整数，如果报错 key error，可能是因为 prediction 还没计算出来
+    # 获取风险信息
     current_risk_info = fire_risk_map.get(int(prediction), {"level": "Unknown", "color": "off"})
     risk_level = current_risk_info["level"]
 
     with col_risk1:
         st.write("#### ⚠️ Risk Diagnosis")
         
-        # 显示当前树种的风险等级
+        # 使用 key 防止渲染冲突
         st.metric(
             label="Species Fire Susceptibility",
             value=f"{risk_level} Risk",
             delta=f"Species: {pred_name}",
             delta_color=current_risk_info["color"],
-            key="metric_fire_risk"  # <--- 关键修复：添加唯一 Key
+            key="metric_fire_risk_unique" 
         )
         
-        # 基础设施诊断
         infra_status = []
         
-        # 检查水源
+        # 基础设施检查
         if h_hydro > 500:
             st.error(f"❌ **Water Access:** Poor ({h_hydro}m away)")
             infra_status.append("Water")
         else:
             st.success(f"✅ **Water Access:** Good ({h_hydro}m away)")
             
-        # 检查道路
         if road > 1000:
             st.error(f"❌ **Emergency Road:** Poor ({road}m away)")
             infra_status.append("Road")
@@ -245,77 +242,65 @@ with tab1:
     with col_risk2:
         st.write("#### 🛡️ AI Recommendations")
         
-        # 只有高风险才建议修路
         if risk_level in ["High", "Critical"]:
-            st.warning(f"Detected **{pred_name}** (High Fuel Load). Immediate mitigation recommended.")
+            st.warning(f"Detected **{pred_name}** (High Fuel Load). Mitigation recommended.")
             
             suggestions = []
-            
             if "Water" in infra_status:
-                suggestions.append(f"💧 **Construct Fire Canal:** Reduce distance to hydrology to < 300m.")
-            
+                suggestions.append(f"💧 **Construct Fire Canal:** Reduce distance to < 300m.")
             if "Road" in infra_status:
-                suggestions.append(f"🛣️ **Extend Access Road:** Reduce distance to roadways to < 500m.")
+                suggestions.append(f"🛣️ **Extend Access Road:** Reduce distance to < 500m.")
             
             if not suggestions:
-                st.info("✅ Infrastructure is adequate. Maintain regular monitoring.")
+                st.info("✅ Infrastructure is adequate.")
             else:
-                for i, s in enumerate(suggestions):
+                for s in suggestions:
                     st.markdown(s)
-        
-        # Ponderosa Pine (Type 3) 属于 Medium，会走这里
         else:
-            st.success(f"**{pred_name}** has manageable fire resistance. Standard monitoring is sufficient.")
-            st.markdown("*No major infrastructure changes required.*")
-            # 添加一个占位符，防止布局塌陷
-            st.caption(f"Risk Level: {risk_level}")
+            st.success(f"**{pred_name}** is Low/Medium risk. Standard monitoring sufficient.")
+            st.caption("No major interventions needed.")
+
 # ------------------------------------------
-# Tab 2: 正向模拟 (What-If 模拟器 - 你的核心需求)
+# Tab 2: 正向模拟 (Tab 2)
 # ------------------------------------------
 with tab2:
-    st.markdown("**Scenario:** Planner manually adjusts infrastructure to forecast ecological impact.")
-    st.caption("Example: *'If I build a canal here (Distance to Hydro = 0), will the forest type change?'*")
+    st.markdown("**Scenario:** Forecast ecological impact of infrastructure changes.")
     
     col_sim1, col_sim2 = st.columns([1, 1], gap="medium")
     
     with col_sim1:
         st.write("#### 🛠️ Intervention Settings")
-        # 这里的滑块独立于左侧 Sidebar，只用于临时模拟
-        # 默认值取当前 query_df 的值
-        current_hydro = query_df['Horizontal_Distance_To_Hydrology'].values[0]
-        current_road = query_df['Horizontal_Distance_To_Roadways'].values[0]
-        current_fire = query_df['Horizontal_Distance_To_Fire_Points'].values[0]
+        
+        # 获取当前值作为默认值
+        cur_h = int(query_df['Horizontal_Distance_To_Hydrology'].values[0])
+        cur_r = int(query_df['Horizontal_Distance_To_Roadways'].values[0])
+        cur_f = int(query_df['Horizontal_Distance_To_Fire_Points'].values[0])
 
-        new_hydro = st.slider("New Dist. to Hydro (m)", 0, 1500, int(current_hydro), key="sim_hydro", help="Simulate building water sources")
-        new_road = st.slider("New Dist. to Road (m)", 0, 7000, int(current_road), key="sim_road", help="Simulate building/removing roads")
-        new_fire = st.slider("New Dist. to Fire (m)", 0, 7000, int(current_fire), key="sim_fire", help="Simulate fire breaks")
+        new_hydro = st.slider("New Dist. to Hydro (m)", 0, 1500, cur_h, key="sim_hydro")
+        new_road = st.slider("New Dist. to Road (m)", 0, 7000, cur_r, key="sim_road")
+        new_fire = st.slider("New Dist. to Fire (m)", 0, 7000, cur_f, key="sim_fire")
         
     with col_sim2:
         st.write("#### 🔮 Forecasted Outcome")
         
-        # 1. 构造模拟数据
         sim_data = query_df.copy()
         sim_data['Horizontal_Distance_To_Hydrology'] = new_hydro
         sim_data['Horizontal_Distance_To_Roadways'] = new_road
         sim_data['Horizontal_Distance_To_Fire_Points'] = new_fire
         
-        # 2. 重新预测
         new_pred = model.predict(sim_data)[0]
         new_probs = model.predict_proba(sim_data)[0]
-        new_pred_name = class_names[new_pred]
         
-        # 3. 显示对比结果 (Metirc)
-        # 如果预测变了，显示绿色；没变显示灰色
         delta_color = "normal" if new_pred == prediction else "inverse"
+        
         st.metric(
             label="Projected Vegetation Type",
-            value=f"{new_pred_name}",
+            value=f"{class_names[new_pred]}",
             delta=f"From: {pred_name}",
-            delta_color=delta_color
+            delta_color=delta_color,
+            key="metric_sim_outcome"
         )
         
-        # 4. 显示概率分布变化 (Bar Chart)
-        # 用数据框展示概率，让规划师看到微小的概率波动
         prob_df = pd.DataFrame({
             "Species": list(class_names.values()),
             "Probability": new_probs
@@ -323,5 +308,6 @@ with tab2:
         st.bar_chart(prob_df.set_index("Species"), color="#2E7D32")
 
 st.markdown("---")
+
 
 
