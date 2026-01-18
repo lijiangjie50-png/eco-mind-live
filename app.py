@@ -189,7 +189,7 @@ st.markdown("### 3. Tactical Planning & Restoration Scenarios")
 tab1, tab2 = st.tabs(["🎯 Intelligent Fire Risk Assessment", "🧪 What-If Simulation"])
 
 # ------------------------------------------
-# Tab 1: 智能火险管理 (Tab 1)
+# Tab 1: 智能火险管理 (Tab 1) - 修正版
 # ------------------------------------------
 with tab1:
     st.markdown("**Module:** 🔥 Risk Assessment & Mitigation")
@@ -215,13 +215,12 @@ with tab1:
     with col_risk1:
         st.write("#### ⚠️ Risk Diagnosis")
         
-        # 使用 key 防止渲染冲突
+        # 修正：删除了不支持的 key 参数
         st.metric(
             label="Species Fire Susceptibility",
             value=f"{risk_level} Risk",
             delta=f"Species: {pred_name}",
-            delta_color=current_risk_info["color"],
-            key="metric_fire_risk_unique" 
+            delta_color=current_risk_info["color"]
         )
         
         infra_status = []
@@ -308,6 +307,7 @@ with tab2:
         st.bar_chart(prob_df.set_index("Species"), color="#2E7D32")
 
 st.markdown("---")
+
 
 
 
