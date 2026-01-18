@@ -260,7 +260,7 @@ with tab1:
             st.caption("No major interventions needed.")
 
 # ------------------------------------------
-# Tab 2: 正向模拟 (Tab 2)
+# Tab 2: 正向模拟 (Tab 2) - 修复版
 # ------------------------------------------
 with tab2:
     st.markdown("**Scenario:** Forecast ecological impact of infrastructure changes.")
@@ -271,6 +271,7 @@ with tab2:
         st.write("#### 🛠️ Intervention Settings")
         
         # 获取当前值作为默认值
+        # 确保转换为 int，防止 numpy 类型报错
         cur_h = int(query_df['Horizontal_Distance_To_Hydrology'].values[0])
         cur_r = int(query_df['Horizontal_Distance_To_Roadways'].values[0])
         cur_f = int(query_df['Horizontal_Distance_To_Fire_Points'].values[0])
@@ -292,12 +293,12 @@ with tab2:
         
         delta_color = "normal" if new_pred == prediction else "inverse"
         
+        # ⚠️ 关键修复：删除了 key="metric_sim_outcome"
         st.metric(
             label="Projected Vegetation Type",
             value=f"{class_names[new_pred]}",
             delta=f"From: {pred_name}",
-            delta_color=delta_color,
-            key="metric_sim_outcome"
+            delta_color=delta_color
         )
         
         prob_df = pd.DataFrame({
@@ -307,7 +308,6 @@ with tab2:
         st.bar_chart(prob_df.set_index("Species"), color="#2E7D32")
 
 st.markdown("---")
-
 
 
 
